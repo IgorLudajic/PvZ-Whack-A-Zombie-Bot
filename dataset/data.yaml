@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 6
+names: ['buckethead', 'conehead', 'damaged_buckethead', 'grave', 'gravebuster', 'zombie']
+
+roboflow:
+  workspace: pvzbot
+  project: pvz-bot
+  version: 4
+  license: MIT
+  url: https://universe.roboflow.com/pvzbot/pvz-bot/dataset/4
