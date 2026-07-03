@@ -109,13 +109,25 @@ class PvZNavigator:
 
         return False
 
+    def _click_with_retry(self, template_key, attempts=3, wait_between=1.0, speed=0.6):
+        """Meni ume da se učitava/animira - probaj nekoliko puta pre odustajanja."""
+        for i in range(attempts):
+            if self.click_human(template_key, speed=speed):
+                return True
+            if i < attempts - 1:
+                print(f"[NAVIGATOR] '{template_key}' još nije vidljiv, čekam...")
+                time.sleep(wait_between)
+        return False
+
     def start_whack_a_zombie(self):
-        if not self.click_human('main_menu_minigames', speed=0.6): return False
-        
+        if not self._click_with_retry('main_menu_minigames'):
+            return False
+
         time.sleep(1.0)
-        
-        if not self.click_human('icon_whack', speed=0.6): return False
-        
+
+        if not self._click_with_retry('icon_whack'):
+            return False
+
         clicks_count = self.handle_popups()
         is_urgent = (clicks_count >= 2)
         return self.wait_for_game_start(urgent_mode=is_urgent)

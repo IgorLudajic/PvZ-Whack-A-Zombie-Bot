@@ -1,0 +1,21 @@
+  ... 25/80 epizoda, trenutni win rate 76.0%
+  ... 50/80 epizoda, trenutni win rate 78.0%
+  ... 75/80 epizoda, trenutni win rate 77.3%
+
+============================================================
+  EVALUACIJA: RL POLITIKA (policy_step50k.pt)  (80 epizoda)
+============================================================
+  Win rate:                  78.8%  (63/80)
+  Partije bez kosačica:      53.8%
+  Kosačice po partiji:       0.89
+  Najbliži prilaz kući:      0.23 kolona (prosek)
+  Zombija u kritičnoj zoni: 11.57 po partiji
+  Ubistva po partiji:       222.4
+  Klikova po partiji:       323.7
+  Sakupljeno sunca:          48.3
+  Grave Buster po partiji:   7.89
+  Cherry Bomb po partiji:    1.96
+  Ice-shroom po partiji:     2.89
+============================================================
+  Detalji: runs\rl\v7\eval_policy_step50k.csv
+
