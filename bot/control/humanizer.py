@@ -31,6 +31,15 @@ def _min_jerk(t):
 class Humanizer:
     def __init__(self, screen_bbox):
         self.bbox = screen_bbox  # (left, top, width, height)
+        # "adrenalin": pod navalom (pressure -> 1) pokreti i klikovi su do
+        # ~30% brži - i čovek ubrzava kada krene gužva
+        self.pressure = 0.0
+
+    def set_pressure(self, p):
+        self.pressure = max(0.0, min(1.0, p))
+
+    def _speedup(self):
+        return 1.0 - 0.30 * self.pressure
 
     # ------------------------------------------------------------------ util
     def _clamp(self, x, y):
@@ -39,7 +48,16 @@ class Humanizer:
 
     def fitts_duration(self, dist):
         d = config.FITTS_A + config.FITTS_B * math.log2(dist / config.FITTS_TARGET_W + 1.0)
-        return d + random.uniform(0.0, 0.04)
+        return (d + random.uniform(0.0, 0.04)) * self._speedup()
+
+    def expected_move_time(self, x, y):
+        """Očekivano trajanje pokreta do (x, y) - za prediktivno nišanjenje."""
+        x0, y0 = pyautogui.position()
+        dist = math.hypot(x - x0, y - y0)
+        if dist < 3:
+            return 0.0
+        return config.FITTS_A + config.FITTS_B * math.log2(
+            dist / config.FITTS_TARGET_W + 1.0)
 
     # ----------------------------------------------------------------- moves
     def move_to(self, x, y):
@@ -72,7 +90,7 @@ class Humanizer:
         c2 = (x0 + (x1 - x0) * 0.7 + perp[0] * bend2,
               y0 + (y1 - y0) * 0.7 + perp[1] * bend2)
 
-        steps = max(int(duration * 90), 4)
+        steps = max(int(duration * 60), 4)
         t_start = time.perf_counter()
         for i in range(1, steps + 1):
             s = _min_jerk(i / steps)
@@ -88,15 +106,23 @@ class Humanizer:
                 time.sleep(sleep)
         pyautogui.moveTo(int(x1), int(y1), _pause=False)
 
+    def micro_shift(self, dx, dy=0):
+        """Mali trenutni pomak (praćenje mete tokom serije udaraca)."""
+        x0, y0 = pyautogui.position()
+        x, y = self._clamp(x0 + dx, y0 + dy)
+        pyautogui.moveTo(int(x), int(y), _pause=False)
+
     # ---------------------------------------------------------------- clicks
     def click(self):
         pyautogui.mouseDown(_pause=False)
-        time.sleep(random.uniform(config.CLICK_HOLD_MIN, config.CLICK_HOLD_MAX))
+        time.sleep(random.uniform(config.CLICK_HOLD_MIN, config.CLICK_HOLD_MAX)
+                   * self._speedup())
         pyautogui.mouseUp(_pause=False)
 
     def multi_click_gap(self):
-        time.sleep(random.uniform(config.MULTI_CLICK_GAP_MIN, config.MULTI_CLICK_GAP_MAX))
+        time.sleep(random.uniform(config.MULTI_CLICK_GAP_MIN, config.MULTI_CLICK_GAP_MAX)
+                   * self._speedup())
 
     def reaction_jitter(self):
         """Mali nasumični zastoj - razbija mašinski ravnomeran ritam petlje."""
-        time.sleep(random.uniform(0.02, 0.08))
+        time.sleep(random.uniform(0.01, 0.04))

@@ -41,8 +41,8 @@ def main():
     wins = sum(r["result"] == "WIN" for r in rows)
     mowers = np.array([int(r["mowers_used"]) for r in rows])
     plants = {
+        "Potato Mine": np.array([int(r["potato_mines"]) for r in rows]),
         "Grave Buster": np.array([int(r["gravebusters"]) for r in rows]),
-        "Cherry Bomb": np.array([int(r["cherries"]) for r in rows]),
         "Ice-shroom": np.array([int(r["ices"]) for r in rows]),
     }
     kills = {

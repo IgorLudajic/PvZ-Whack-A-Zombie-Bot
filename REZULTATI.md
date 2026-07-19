@@ -23,15 +23,24 @@ očekivanja u pravoj igri.
 
 ## Finalna tabela (test set: 150 epizoda, seed 555)
 
-| Politika | Pristup | Win rate | Kosačice/partiji | Grave Buster | Cherry Bomb | Ice-shroom |
+Mehanika usklađena sa stvarnom mini-igrom (17.06.2026): biljke su
+**Potato Mine (25), Grave Buster (75), Ice-shroom (75)** — Cherry Bomb ne
+postoji u Whack-a-Zombie. Mina se aktivira ~15 s po sadnji i eksplodira
+kada zombi nagazi (uloga "rezervne kosačice").
+
+| Politika | Pristup | Win rate | Kosačice/partiji | Potato Mine | Grave Buster | Ice-shroom |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
-| Heuristika v1.0 | ručna pravila | 100.0% | 0.19 | 7.9 | **0.0** | **0.0** |
-| Pro-heuristika (demonstrator) | ručna pravila | 100.0% | 0.19 | 8.1 | 2.4 | 3.2 |
-| DQN (najbolji, v10) | RL iz nagrade | 94.0% | 0.61 | — | — | — |
-| **Behavior cloning (izabrana)** | **imitaciono učenje** | **99.3%** | **0.17** | 7.6 | 2.1 | 3.2 |
+| Heuristika v1.0 | ručna pravila | 100.0% | 0.00 | **0.0** | 7.9 | **0.0** |
+| Pro-heuristika (demonstrator) | ručna pravila | 100.0% | 0.01 | 4.5 | 5.7 | 3.3 |
+| DQN (najbolji checkpoint) | RL iz nagrade | ~93% * | ~0.3 * | — | — | — |
+| **Behavior cloning (izabrana)** | **imitaciono učenje** | **100.0%** | **0.05** | 3.5 | 5.8 | 3.4 |
+
+\* DQN vrednosti su iz vodeće greedy evaluacije tokom treninga (30 epizoda);
+nezavisna evaluacija checkpointa se dopunjuje.
 
 Potvrda izabrane politike na **drugom** nezavisnom setu (200 epizoda, seed 2024):
-**100.0% (200/200)**, 0.23 kosačice/partiji, **87% partija bez ijedne kosačice**.
+**100.0% (200/200)**, 0.04 kosačice/partiji, **98% partija bez ijedne kosačice**,
+prosečno svega 5.5 zombija po partiji uđe u kritičnu zonu.
 
 > **Tri paradigme, jedan zaključak.** Ručna heuristika postiže 100% jer je
 > „savršen reaktor" sa instant prioritetom i potpunom informacijom — ali je

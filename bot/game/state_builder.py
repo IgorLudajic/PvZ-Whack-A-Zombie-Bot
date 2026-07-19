@@ -11,14 +11,15 @@ from bot.state import Snapshot, ZombieInfo
 
 
 class GridMapper:
-    """Mapiranje piksela ekrana <-> ćelija travnjaka 5x9."""
+    """Mapiranje piksela ekrana <-> ćelija travnjaka 5x9.
+    Frakcije se odnose na detektovan okvir igre (screen.gx/gy/gw/gh)."""
 
     def __init__(self, screen):
         self.screen = screen
-        self.left = LAWN_LEFT_FRAC * screen.width
-        self.top = LAWN_TOP_FRAC * screen.height
-        self.cell_w = (LAWN_RIGHT_FRAC - LAWN_LEFT_FRAC) * screen.width / COLS
-        self.cell_h = (LAWN_BOTTOM_FRAC - LAWN_TOP_FRAC) * screen.height / ROWS
+        self.left = screen.gx + LAWN_LEFT_FRAC * screen.gw
+        self.top = screen.gy + LAWN_TOP_FRAC * screen.gh
+        self.cell_w = (LAWN_RIGHT_FRAC - LAWN_LEFT_FRAC) * screen.gw / COLS
+        self.cell_h = (LAWN_BOTTOM_FRAC - LAWN_TOP_FRAC) * screen.gh / ROWS
 
     def cell_of_px(self, x, y):
         col = int((x - self.left) / self.cell_w)
@@ -41,8 +42,10 @@ class GridMapper:
 
 
 def build_snapshot(mapper, tracks, grave_dets, suns_px, card_ready,
-                   mowers_left, time_progress, sun_bank, freeze_remaining, now):
-    """Vraća (Snapshot, cell->track mapa za izvršni sloj)."""
+                   mowers_left, time_progress, sun_bank, freeze_remaining, now,
+                   mines=None):
+    """Vraća (Snapshot, cell->track mapa za izvršni sloj).
+    mines: [(row, col, armed)] iz internog registra (YOLO ne vidi mine)."""
     zombies = []
     cell_tracks = {}
     for tr in tracks:
@@ -56,12 +59,13 @@ def build_snapshot(mapper, tracks, grave_dets, suns_px, card_ready,
             cell_tracks[(r, c)] = tr
 
     graves = {mapper.cell_of_px(d.cx, d.cy + 0.2 * (d.y2 - d.y1)) for d in grave_dets}
-    suns = [mapper.cell_of_px(x, y) for (x, y) in suns_px]
+    suns = [mapper.cell_of_px(s[0], s[1]) for s in suns_px]
 
     snap = Snapshot(
         zombies=zombies,
         graves=graves,
         suns=suns,
+        mines=list(mines) if mines else [],
         sun_bank=sun_bank,
         card_ready=card_ready,
         mowers_left=mowers_left,

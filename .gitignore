@@ -6,4 +6,6 @@ venv/
 stats/games/
 stats/debug_*.mp4
 calibration_preview.png
+calibration.json
 screenshot_*.png
+assets_capture/

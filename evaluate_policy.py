@@ -83,8 +83,8 @@ def summarize(name, stats, out_csv):
     print(f"  Ubistva po partiji:      {np.mean([s.total_kills for s in stats]):6.1f}")
     print(f"  Klikova po partiji:      {np.mean([s.clicks for s in stats]):6.1f}")
     print(f"  Sakupljeno sunca:        {np.mean([s.suns_collected for s in stats]):6.1f}")
+    print(f"  Potato Mine po partiji:  {np.mean([s.plants_used['potato_mine'] for s in stats]):6.2f}")
     print(f"  Grave Buster po partiji: {np.mean([s.plants_used['gravebuster'] for s in stats]):6.2f}")
-    print(f"  Cherry Bomb po partiji:  {np.mean([s.plants_used['cherry'] for s in stats]):6.2f}")
     print(f"  Ice-shroom po partiji:   {np.mean([s.plants_used['ice'] for s in stats]):6.2f}")
     print("=" * 60)
 
@@ -92,12 +92,12 @@ def summarize(name, stats, out_csv):
         with open(out_csv, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(["episode", "result", "duration", "kills", "clicks",
-                        "suns", "gravebusters", "cherries", "ices", "mowers",
+                        "suns", "gravebusters", "potato_mines", "ices", "mowers",
                         "closest_approach", "danger_near"])
             for i, s in enumerate(stats):
                 w.writerow([i + 1, s.result, f"{s.duration:.1f}", s.total_kills,
                             s.clicks, s.suns_collected, s.plants_used["gravebuster"],
-                            s.plants_used["cherry"], s.plants_used["ice"], s.mowers_used,
+                            s.plants_used["potato_mine"], s.plants_used["ice"], s.mowers_used,
                             f"{s.closest_approach:.2f}", s.danger_near_count])
         print(f"  Detalji: {out_csv}\n")
 

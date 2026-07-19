@@ -4,19 +4,20 @@ Skriptirane politike za poređenje i demonstracije.
 
 HeuristicPolicy  - replika strategije v1.0 bota: uvek udari najlevljeg
                    zombija, sunce kupi kad je mirno, Grave Buster kad je
-                   malo zombija; Cherry Bomb i Ice-shroom NE koristi.
+                   malo zombija; Potato Mine i Ice-shroom NE koristi.
                    Služi kao baseline u evaluaciji.
 
 ProHeuristicPolicy - obogaćena verzija za generisanje demonstracija:
-                   koristi i Cherry Bomb (na najgušći klaster) i
-                   Ice-shroom (kad je gužva), i kupi sunce čim nema
-                   akutne opasnosti. Pokazuje RL agentu sve tipove
-                   akcija u smislenim situacijama.
+                   koristi i Potato Mine (odbrambena linija u levim
+                   kolonama - "rezervna kosačica") i Ice-shroom (kad je
+                   gužva), i kupi sunce čim nema akutne opasnosti.
+                   Pokazuje RL agentu sve tipove akcija u smislenim
+                   situacijama.
 """
 
 from config import ROWS, COLS
 from bot.actions import (
-    WHACK_BASE, BUSTER_BASE, CHERRY_BASE, ACTION_ICE,
+    WHACK_BASE, BUSTER_BASE, MINE_BASE, ACTION_ICE,
     ACTION_COLLECT_SUN, ACTION_WAIT, rc_to_cell,
 )
 from bot.state import Snapshot
@@ -36,11 +37,13 @@ class HeuristicPolicy:
 
 
 class ProHeuristicPolicy:
-    """Ekspertska skripta: prioritet akutna odbrana, pa AoE biljke u gužvi,
-    pa ekonomija (sunce, grobovi)."""
+    """Ekspertska skripta: prioritet akutna odbrana, pa led u gužvi, pa
+    minska odbrambena linija u levim kolonama, pa ekonomija (sunce, grobovi)."""
 
-    ICE_ZOMBIE_THRESHOLD = 10
-    CHERRY_CLUSTER_MIN = 5
+    # led tek kad je navala OZBILJNA - prerano trošenje ostavlja agenta
+    # golog pred još većim talasom koji sledi (finalni talasi su najveći)
+    ICE_ZOMBIE_THRESHOLD = 24
+    MINE_COL = 1  # kolona odbrambene linije
 
     def act_snapshot(self, s: Snapshot) -> int:
         zombies = s.zombies
@@ -54,31 +57,43 @@ class ProHeuristicPolicy:
         if s.card_ready[2] and len(zombies) >= self.ICE_ZOMBIE_THRESHOLD:
             return ACTION_ICE
 
-        # 3) gust klaster - višnja na njegov centar
-        if s.card_ready[1] and zombies:
-            best_cell, best_count = None, 0
-            for r in range(ROWS):
-                for c in range(COLS):
-                    if (r, c) in s.graves:
-                        continue
-                    count = sum(1 for z in zombies
-                                if abs(z.row - r) <= 1 and abs(z.col - c) <= 1)
-                    if count > best_count:
-                        best_cell, best_count = (r, c), count
-            if best_cell is not None and best_count >= self.CHERRY_CLUSTER_MIN:
-                return CHERRY_BASE + rc_to_cell(best_cell[0], best_cell[1])
-
-        # 4) nema akutne opasnosti - pokupi sunce (finansira biljke)
-        if s.suns and (leftmost is None or leftmost.col >= 4):
-            return ACTION_COLLECT_SUN
-
-        # 5) standardno čišćenje
-        if leftmost is not None:
-            return WHACK_BASE + rc_to_cell(leftmost.row, leftmost.col)
-
-        # 6) mir - skloni grob (najlevlji je najopasniji izvor)
-        if s.card_ready[0] and s.graves:
+        # 3) grobovi su izvor svih zombija - Grave Buster na grob NAJBLIŽI
+        #    KUĆI čim nema akutne opasnosti (manje grobova = manja navala)
+        if s.card_ready[0] and s.graves and (leftmost is None or leftmost.col >= 5):
             r, c = min(s.graves, key=lambda rc: rc[1])
             return BUSTER_BASE + rc_to_cell(r, c)
 
+        # 4) minska linija u red sa NAJVIŠE grobova (najveći priliv zombija)
+        if s.card_ready[1] and (leftmost is None or leftmost.col >= 5):
+            cell = self._mine_spot(s)
+            if cell is not None:
+                return MINE_BASE + rc_to_cell(cell[0], cell[1])
+
+        # 5) pokupi sunce čim nema akutne opasnosti (finansira biljke)
+        if s.suns and (leftmost is None or leftmost.col >= 3):
+            return ACTION_COLLECT_SUN
+
+        # 6) standardno čišćenje
+        if leftmost is not None:
+            return WHACK_BASE + rc_to_cell(leftmost.row, leftmost.col)
+
         return ACTION_WAIT
+
+    def _mine_spot(self, s: Snapshot):
+        """Bira (red, kolona) za minu: red sa najviše grobova (najveći
+        priliv zombija), kolona 1-2 (uloga rezervne kosačice)."""
+        mine_rows = {r for (r, _, _) in s.mines}
+        graves_per_row = {}
+        for (r, _c) in s.graves:
+            graves_per_row[r] = graves_per_row.get(r, 0) + 1
+        candidate_rows = sorted(
+            (r for r in range(ROWS)
+             if r not in mine_rows and graves_per_row.get(r, 0) > 0),
+            key=lambda r: -graves_per_row[r],
+        )
+        mine_cells = {(r, c) for (r, c, _) in s.mines}
+        for r in candidate_rows:
+            for c in (self.MINE_COL, self.MINE_COL + 1):
+                if (r, c) not in s.graves and (r, c) not in mine_cells:
+                    return (r, c)
+        return None

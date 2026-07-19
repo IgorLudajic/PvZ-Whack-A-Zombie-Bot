@@ -3,8 +3,10 @@
 Simulator mini-igre "Whack-a-Zombie" za trening RL agenta.
 
 Modelira: grobove i talase zombija (običan/čunj/kanta = 1/2/3 udarca),
-ispadanje sunca pri ubistvu, sve tri biljke (Grave Buster, Cherry Bomb,
+ispadanje sunca pri ubistvu, sve tri biljke (Potato Mine, Grave Buster,
 Ice-shroom) sa cenom i punjenjem, kosačice i uslove pobede/poraza.
+Potato Mine se aktivira ~15 s posle sadnje i eksplodira kada zombi
+nagazi (uloga "rezervne kosačice"); nenaoružanu minu zombi pojede.
 
 Ključna ideja: svaka akcija agenta traje onoliko koliko bi trajala čoveku
 (vreme reakcije + Fittsov zakon za pokret miša + trajanje klikova), a svet
@@ -58,10 +60,17 @@ class SimZombie:
 
 @dataclass
 class SimPlant:
-    kind: str                # 'buster' | 'cherry' | 'ice'
+    kind: str                # 'ice' (jednokratni efekat sa tajmerom)
     row: int
     col: int
     timer: float             # vreme do efekta
+
+
+@dataclass
+class SimMine:
+    row: int
+    col: int
+    arm_remaining: float     # >0 dok se aktivira; <=0 = naoružana
 
 
 @dataclass
@@ -79,7 +88,7 @@ class EpisodeStats:
     clicks: int = 0
     suns_collected: int = 0
     sun_spent: int = 0
-    plants_used: dict = field(default_factory=lambda: {"gravebuster": 0, "cherry": 0, "ice": 0})
+    plants_used: dict = field(default_factory=lambda: {"gravebuster": 0, "potato_mine": 0, "ice": 0})
     mowers_used: int = 0
     actions: dict = field(default_factory=dict)
     closest_approach: float = float(COLS)  # najmanja x-pozicija zombija (bezbednosna margina)
@@ -105,6 +114,7 @@ class WhackSimulator:
         self.mowers = [True] * ROWS
         self.zombies = []
         self.plants = []
+        self.mines = []
         self.suns = []
         self.freeze_remaining = 0.0
         self.slow_remaining = 0.0
@@ -119,22 +129,24 @@ class WhackSimulator:
         self.p_click_miss = rng.uniform(0.05, 0.12)
         self.p_detect_miss = rng.uniform(0.02, 0.07)
 
-        # domain randomization parametara po epizodi
-        self.sun_drop_prob = rng.uniform(0.25, 0.40)
+        # domain randomization parametara po epizodi; sunce pada u TROJKAMA
+        # (potvrđeno u pravoj igri), pa je verovatnoća ispuštanja niža
+        self.sun_drop_prob = rng.uniform(0.09, 0.15)
         self.zombie_speed = {
             "zombie": rng.uniform(0.180, 0.240),
             "conehead": rng.uniform(0.170, 0.220),
             "buckethead": rng.uniform(0.140, 0.185),
         }
         self.rise_range = (rng.uniform(0.9, 1.2), rng.uniform(1.8, 2.4))
-        self.recharge_time = {"gravebuster": 7.5, "cherry": 50.0, "ice": 30.0}
-        self.recharge = {"gravebuster": 0.0, "cherry": 0.0, "ice": 0.0}
+        self.mine_arm_time = rng.uniform(13.0, 16.0)
+        self.recharge_time = {"gravebuster": 7.5, "potato_mine": 30.0, "ice": 30.0}
+        self.recharge = {"gravebuster": 0.0, "potato_mine": 0.0, "ice": 0.0}
 
-        # početni raspored grobova - kao u igri, mogu i blizu kuće (kolona 1+),
-        # što leve spawnove čini akutno opasnim
+        # početni raspored grobova - u pravoj igri se grobovi NE stvaraju
+        # u prve 3 kolone (potvrđeno posmatranjem)
         self.graves = {}  # (r, c) -> 'idle' | float (vreme do nestanka pod busterom)
         n_graves = rng.randint(10, 14)
-        cells = [(r, c) for r in range(ROWS) for c in range(1, COLS)]
+        cells = [(r, c) for r in range(ROWS) for c in range(3, COLS)]
         rng.shuffle(cells)
         for rc in cells[:n_graves]:
             self.graves[rc] = "idle"
@@ -164,9 +176,9 @@ class WhackSimulator:
         phase(0.18 * T, 0.40 * T, 1.2, 1.8)
         burst(0.40 * T, rng.randint(10, 14), 5.0)      # talas 1
         phase(0.40 * T, 0.65 * T, 0.8, 1.2)
-        burst(0.65 * T, rng.randint(16, 20), 6.0)      # talas 2
-        phase(0.65 * T, 0.90 * T, 0.50, 0.80)
-        burst(0.90 * T, rng.randint(32, 42), 6.0)      # finalni talas
+        burst(0.65 * T, rng.randint(14, 18), 6.0)      # talas 2
+        phase(0.65 * T, 0.90 * T, 0.60, 0.90)
+        burst(0.90 * T, rng.randint(26, 34), 7.0)      # finalni talas
         schedule.sort()
 
         # tip zombija zavisi od napretka nivoa
@@ -260,6 +272,25 @@ class WhackSimulator:
                     reward += self._trigger_plant(p)
                     self.plants.remove(p)
 
+            # mine: aktivacija + okidanje/gutanje pri nagazu
+            for m in list(self.mines):
+                if m.arm_remaining > 0:
+                    m.arm_remaining -= dt
+                stepped = [z for z in self.zombies
+                           if z.row == m.row and z.rise_remaining <= 0
+                           and abs(z.x - m.col) <= 0.35]
+                if not stepped:
+                    continue
+                self.mines.remove(m)
+                if m.arm_remaining <= 0:
+                    # eksplozija - ubija sve na ćeliji mine
+                    for z in [z for z in self.zombies
+                              if z.row == m.row and abs(z.x - m.col) <= 0.6]:
+                        self.zombies.remove(z)
+                        self.stats.kills[z.kind] += 1
+                        reward += R_KILL
+                # nenaoružanu minu zombi pojede - propala investicija
+
             # grobovi koje Grave Buster jede
             for rc, state in list(self.graves.items()):
                 if state != "idle":
@@ -333,7 +364,7 @@ class WhackSimulator:
         ))
 
     def _add_wave_graves(self):
-        free = [(r, c) for r in range(ROWS) for c in range(1, COLS)
+        free = [(r, c) for r in range(ROWS) for c in range(3, COLS)
                 if (r, c) not in self.graves]
         self.rng.shuffle(free)
         target_min = 6
@@ -342,17 +373,9 @@ class WhackSimulator:
             self.graves[rc] = "idle"
 
     def _trigger_plant(self, plant):
-        reward = 0.0
-        if plant.kind == "cherry":
-            killed = [z for z in self.zombies
-                      if abs(z.row - plant.row) <= 1 and abs(z.x - plant.col) <= 1.5]
-            for z in killed:
-                self.zombies.remove(z)
-                self.stats.kills[z.kind] += 1
-                reward += R_KILL
-        elif plant.kind == "ice":
+        if plant.kind == "ice":
             self.freeze_remaining = 4.5
-        return reward
+        return 0.0
 
     # ------------------------------------------------------------------- step
     def step(self, action_id):
@@ -368,8 +391,8 @@ class WhackSimulator:
             reward += self._do_whack(r, c)
         elif kind == "buster":
             reward += self._do_plant_card("gravebuster", r, c)
-        elif kind == "cherry":
-            reward += self._do_plant_card("cherry", r, c)
+        elif kind == "mine":
+            reward += self._do_plant_card("potato_mine", r, c)
         elif kind == "ice":
             snap = self._snapshot()
             cell = find_free_cell(snap)
@@ -424,8 +447,10 @@ class WhackSimulator:
                 self.stats.kills[target.kind] += 1
                 reward += R_KILL
                 if self.rng.random() < self.sun_drop_prob:
+                    # zombi ispušta TROJKU sunaca (kao u pravoj igri)
                     col = max(0, min(COLS - 1, int(round(target.x))))
-                    self.suns.append(SimSun(target.row, col, self.t + 8.0))
+                    for _ in range(3):
+                        self.suns.append(SimSun(target.row, col, self.t + 8.0))
                 break
             if i < hits - 1:
                 reward += self._advance(self._gap_time())
@@ -449,18 +474,19 @@ class WhackSimulator:
         if self.done:
             return reward
 
+        mine_cells = {(m.row, m.col) for m in self.mines}
         if card == "gravebuster":
             if self.graves.get((r, c)) != "idle":
                 return reward + R_MISS
             self.graves[(r, c)] = 3.0  # buster jede grob 3 s
             self.stats.plants_used["gravebuster"] += 1
-        elif card == "cherry":
-            if (r, c) in self.graves:
+        elif card == "potato_mine":
+            if (r, c) in self.graves or (r, c) in mine_cells:
                 return reward + R_MISS
-            self.plants.append(SimPlant("cherry", r, c, 1.2))
-            self.stats.plants_used["cherry"] += 1
+            self.mines.append(SimMine(r, c, self.mine_arm_time))
+            self.stats.plants_used["potato_mine"] += 1
         elif card == "ice":
-            if (r, c) in self.graves:
+            if (r, c) in self.graves or (r, c) in mine_cells:
                 return reward + R_MISS
             self.plants.append(SimPlant("ice", r, c, 1.0))
             self.stats.plants_used["ice"] += 1
@@ -511,10 +537,11 @@ class WhackSimulator:
             graves={rc for rc, st in self.graves.items()
                     if st == "idle" and self.rng.random() > self.p_detect_miss},
             suns=[(s.row, s.col) for s in self.suns],
+            mines=[(m.row, m.col, m.arm_remaining <= 0) for m in self.mines],
             sun_bank=self.sun_bank,
             card_ready=(
                 self._card_ready("gravebuster"),
-                self._card_ready("cherry"),
+                self._card_ready("potato_mine"),
                 self._card_ready("ice"),
             ),
             mowers_left=sum(self.mowers),

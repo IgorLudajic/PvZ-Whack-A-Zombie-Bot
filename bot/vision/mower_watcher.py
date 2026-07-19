@@ -21,15 +21,15 @@ class MowerWatcher:
         self.baselines = None
         self.fired = [False] * ROWS
 
-        lawn_top = config.LAWN_TOP_FRAC * screen.height
-        lawn_bottom = config.LAWN_BOTTOM_FRAC * screen.height
+        lawn_top = screen.gy + config.LAWN_TOP_FRAC * screen.gh
+        lawn_bottom = screen.gy + config.LAWN_BOTTOM_FRAC * screen.gh
         row_h = (lawn_bottom - lawn_top) / ROWS
-        x = int(config.MOWER_STRIP_LEFT_FRAC * screen.width)
-        w = int(config.MOWER_STRIP_WIDTH_FRAC * screen.width)
+        x = int(screen.gx + config.MOWER_STRIP_LEFT_FRAC * screen.gw)
+        w = int(config.MOWER_STRIP_WIDTH_FRAC * screen.gw)
         self.rois = []
         for r in range(ROWS):
-            y = int(lawn_top + r * row_h + row_h * 0.25)
-            h = int(row_h * 0.5)
+            y = int(lawn_top + r * row_h + row_h * config.MOWER_ROW_OFFSET_FRAC)
+            h = int(row_h * config.MOWER_ROW_HEIGHT_FRAC)
             self.rois.append((x, y, w, h))
 
     def capture_baseline(self, frame_bgr):

@@ -14,14 +14,14 @@ import numpy as np
 
 from config import ROWS, COLS
 from bot.actions import (
-    N_ACTIONS, N_CELLS, WHACK_BASE, BUSTER_BASE, CHERRY_BASE,
+    N_ACTIONS, N_CELLS, WHACK_BASE, BUSTER_BASE, MINE_BASE,
     ACTION_ICE, ACTION_COLLECT_SUN, ACTION_WAIT, rc_to_cell,
 )
 
 # Broj udaraca čekićem po tipu zombija
 HITS_BY_KIND = {"zombie": 1, "conehead": 2, "buckethead": 3}
 
-GRID_CHANNELS = 6
+GRID_CHANNELS = 7
 N_SCALARS = 8
 OBS_DIM = ROWS * COLS * GRID_CHANNELS + N_SCALARS
 
@@ -42,8 +42,9 @@ class Snapshot:
     zombies: list = field(default_factory=list)      # [ZombieInfo]
     graves: set = field(default_factory=set)         # {(row, col)}
     suns: list = field(default_factory=list)         # [(row, col)]
+    mines: list = field(default_factory=list)        # [(row, col, armed)]
     sun_bank: float = 0.0
-    card_ready: tuple = (False, False, False)        # (gravebuster, cherry, ice)
+    card_ready: tuple = (False, False, False)        # (gravebuster, potato_mine, ice)
     mowers_left: int = ROWS
     time_progress: float = 0.0                       # 0..1 kroz trajanje nivoa
     freeze_remaining: float = 0.0                    # s preostalog zamrzavanja
@@ -69,6 +70,10 @@ def encode_observation(s: Snapshot) -> np.ndarray:
     for (r, c) in s.suns:
         if 0 <= r < ROWS and 0 <= c < COLS:
             grid[5, r, c] = 1.0
+
+    for (r, c, armed) in s.mines:
+        if 0 <= r < ROWS and 0 <= c < COLS:
+            grid[6, r, c] = 1.0 if armed else 0.5
 
     scalars = np.array([
         min(s.sun_bank / 300.0, 2.0),
@@ -104,15 +109,17 @@ def build_action_mask(s: Snapshot) -> np.ndarray:
             if 0 <= r < ROWS and 0 <= c < COLS:
                 mask[BUSTER_BASE + rc_to_cell(r, c)] = True
 
+    mine_cells = {(r, c) for (r, c, _) in s.mines}
+
     if s.card_ready[1]:
         for r in range(ROWS):
             for c in range(COLS):
-                if (r, c) not in s.graves:
-                    mask[CHERRY_BASE + rc_to_cell(r, c)] = True
+                if (r, c) not in s.graves and (r, c) not in mine_cells:
+                    mask[MINE_BASE + rc_to_cell(r, c)] = True
 
     if s.card_ready[2]:
         free_exists = any(
-            (r, c) not in s.graves
+            (r, c) not in s.graves and (r, c) not in mine_cells
             for r in range(ROWS) for c in range(COLS)
         )
         if free_exists:
@@ -126,11 +133,12 @@ def build_action_mask(s: Snapshot) -> np.ndarray:
 
 
 def find_free_cell(s: Snapshot, prefer_safe=True):
-    """Bira slobodnu ćeliju za sadnju Ice-shroom-a (bez groba; po mogućstvu
-    desno i dalje od zombija, da sadnja ne smeta čekiću)."""
+    """Bira slobodnu ćeliju za sadnju Ice-shroom-a (bez groba/mine; po
+    mogućstvu desno i dalje od zombija, da sadnja ne smeta čekiću)."""
+    mine_cells = {(r, c) for (r, c, _) in s.mines}
     candidates = [
         (r, c) for r in range(ROWS) for c in range(COLS)
-        if (r, c) not in s.graves
+        if (r, c) not in s.graves and (r, c) not in mine_cells
     ]
     if not candidates:
         return None

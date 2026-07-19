@@ -31,14 +31,12 @@ from bot.sim.simulator import WhackSimulator
 from bot.state import encode_observation, build_action_mask
 from bot.agent.policy import TrainedPolicy
 
+# Kandidati moraju biti trenirani na AKTUELNOJ verziji stanja (OBS_DIM);
+# stariji checkpointi (runs/rl/v7-v10, stara bc) su nekompatibilni jer je
+# mehanika Potato Mine promenila kodiranje stanja.
 CANDIDATES = [
-    "runs/rl/v7/policy_best.pt",
-    "runs/rl/v8/policy_best.pt",
-    "runs/rl/v8/policy_step50k.pt",
-    "runs/rl/v8/policy_step100k.pt",
-    "runs/rl/v9/policy_best.pt",
-    "runs/rl/v9/policy_step50k.pt",
-    "runs/rl/v9/policy_step100k.pt",
+    "runs/rl/bc_mine/policy_best.pt",
+    "runs/rl/dqn_mine/policy_best.pt",
 ]
 
 

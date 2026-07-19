@@ -16,7 +16,7 @@ import config
 CSV_COLUMNS = [
     "timestamp", "result", "duration_s", "kills_total", "kills_zombie",
     "kills_conehead", "kills_buckethead", "clicks", "suns_collected",
-    "sun_spent", "gravebusters", "cherries", "ices", "mowers_used",
+    "sun_spent", "gravebusters", "potato_mines", "ices", "mowers_used",
     "danger_near_count", "win_rate_to_date",
 ]
 
@@ -41,7 +41,7 @@ class StatsLogger:
                 stats.total_kills, stats.kills["zombie"], stats.kills["conehead"],
                 stats.kills["buckethead"], stats.clicks, stats.suns_collected,
                 stats.sun_spent, stats.plants_used["gravebuster"],
-                stats.plants_used["cherry"], stats.plants_used["ice"],
+                stats.plants_used["potato_mine"], stats.plants_used["ice"],
                 stats.mowers_used, stats.danger_near_count, f"{win_rate:.1f}",
             ])
 
@@ -88,8 +88,8 @@ class StatsLogger:
               f"kanti {stats.kills['buckethead']})")
         print(f"  Klikova:            {stats.clicks}")
         print(f"  Sakupljeno sunca:   {stats.suns_collected} (potrošeno {stats.sun_spent})")
-        print(f"  Biljke:             Grave Buster x{stats.plants_used['gravebuster']}, "
-              f"Cherry Bomb x{stats.plants_used['cherry']}, "
+        print(f"  Biljke:             Potato Mine x{stats.plants_used['potato_mine']}, "
+              f"Grave Buster x{stats.plants_used['gravebuster']}, "
               f"Ice-shroom x{stats.plants_used['ice']}")
         print(f"  Kosačice:           {stats.mowers_used} "
               f"{'(SAVRŠENO - nijedna!)' if stats.mowers_used == 0 else ''}")

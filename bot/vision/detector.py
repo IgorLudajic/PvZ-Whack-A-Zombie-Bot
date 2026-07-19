@@ -42,13 +42,18 @@ class YoloDetector:
         self.min_conf = min(config.CLASS_CONF.values())
         self.grave_history = deque(maxlen=config.GRAVE_PERSISTENCE_WINDOW)
 
-    def detect(self, frame_bgr):
-        """Vraća (detekcije_zombija_i_bustera, potvrđeni_grobovi_kao_detekcije)."""
+    def detect(self, frame_bgr, offset=(0, 0)):
+        """Vraća (detekcije_zombija_i_bustera, potvrđeni_grobovi_kao_detekcije).
+
+        frame_bgr može biti isečen okvir igre (manje pozadine -> mete krupnije
+        u YOLO ulazu); offset se dodaje koordinatama da ostanu u prostoru
+        celog ekrana."""
         results = self.model.predict(
             source=frame_bgr, conf=self.min_conf,
             imgsz=config.YOLO_IMGSZ, verbose=False,
         )
         result = results[0]
+        ox, oy = offset
 
         moving, graves_now = [], []
         for box in result.boxes:
@@ -57,7 +62,7 @@ class YoloDetector:
             if conf < config.CLASS_CONF.get(cls_name, 0.30):
                 continue
             x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].cpu().numpy())
-            det = Detection(cls_name, conf, x1, y1, x2, y2)
+            det = Detection(cls_name, conf, x1 + ox, y1 + oy, x2 + ox, y2 + oy)
             if cls_name == "grave":
                 graves_now.append(det)
             else:

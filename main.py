@@ -15,6 +15,7 @@ Pre prvog pokretanja:
   - proveriti kalibraciju: python tools/calibrate_hud.py
 """
 
+import argparse
 import os
 import sys
 import time
@@ -31,6 +32,11 @@ from navigator import PvZNavigator
 
 
 def main():
+    parser = argparse.ArgumentParser(description="PvZ Whack-a-Zombie RL agent")
+    parser.add_argument("--games", type=int, default=1,
+                        help="broj partija zaredom (za statistiku)")
+    args = parser.parse_args()
+
     print("=" * 49)
     print("   PvZ WHACK-A-ZOMBIE RL AGENT v2.0")
     print("=" * 49)
@@ -51,24 +57,42 @@ def main():
     from bot.stats.logger import StatsLogger
 
     policy = TrainedPolicy(config.POLICY_PATH)
-    session = RealGameSession(policy)  # učitava i YOLO (warmup pre menija)
     logger = StatsLogger()
+    RealGameSession(policy)  # warmup YOLO pre menija (prva inferenca je spora)
 
     print("\n--> Otvori igru na glavnom meniju (Main Menu) i ne diraj miš.")
     print("--> Počinjem za 3 sekunde...")
     time.sleep(3)
 
     nav = PvZNavigator()
-    if not nav.start_whack_a_zombie():
-        print("\n[GREŠKA] Navigacija kroz meni nije uspela. "
-              "Proveri da li je igra u fokusu na glavnom meniju.")
-        sys.exit(1)
+    for game_no in range(1, args.games + 1):
+        if args.games > 1:
+            print(f"\n{'=' * 49}\n   PARTIJA {game_no}/{args.games}\n{'=' * 49}")
 
-    print("[INIT] Igra pokrenuta - predajem kontrolu agentu.\n")
-    time.sleep(1.0)
+        if game_no == 1:
+            ok = nav.start_whack_a_zombie()
+        else:
+            # posle završene partije igra nudi dijaloge (Try Again / meni);
+            # prvo probaj direktno kroz dijaloge, pa ceo put od menija
+            ok = nav.prepare_game(timeout=25.0) or nav.start_whack_a_zombie()
+        if not ok:
+            print("\n[GREŠKA] Navigacija nije uspela - prekidam seriju.")
+            break
 
-    stats = session.play()
-    logger.log_game(stats)
+        print("[INIT] Igra pokrenuta - predajem kontrolu agentu.\n")
+        time.sleep(1.0)
+
+        session = RealGameSession(policy)  # svež tracker/statistika po partiji
+        stats = session.play()
+        if stats.result == "INTERRUPTED":
+            print("\n[KRAJ] Partija prekinuta ručno (Ctrl+C) - ništa se ne upisuje.")
+            break
+        logger.log_game(stats)
+
+        if stats.result == "TIMEOUT":
+            break
+        if game_no < args.games:
+            time.sleep(3.0)  # završni ekran/animacija pre sledeće navigacije
 
     print("\n[KRAJ] Program se gasi.")
 

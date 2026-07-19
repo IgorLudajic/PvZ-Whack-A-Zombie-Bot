@@ -24,12 +24,19 @@ from bot.vision.capture import ScreenCapture
 
 def main():
     screen = ScreenCapture()
+    screen.detect_game_region()
     frame = screen.grab_bgr()
-    w, h = screen.width, screen.height
+
+    # okvir igre (detektovana svetla oblast između crnih traka)
+    gx, gy, gw, gh = screen.gx, screen.gy, screen.gw, screen.gh
+    cv2.rectangle(frame, (gx, gy), (gx + gw - 1, gy + gh - 1), (255, 0, 255), 3)
+    cv2.putText(frame, f"OKVIR IGRE {gw}x{gh}", (gx + 10, gy + gh - 15),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
 
     # mreža travnjaka
-    left, top = config.LAWN_LEFT_FRAC * w, config.LAWN_TOP_FRAC * h
-    right, bottom = config.LAWN_RIGHT_FRAC * w, config.LAWN_BOTTOM_FRAC * h
+    left, top = gx + config.LAWN_LEFT_FRAC * gw, gy + config.LAWN_TOP_FRAC * gh
+    right = gx + config.LAWN_RIGHT_FRAC * gw
+    bottom = gy + config.LAWN_BOTTOM_FRAC * gh
     cell_w, cell_h = (right - left) / COLS, (bottom - top) / ROWS
     for i in range(COLS + 1):
         x = int(left + i * cell_w)

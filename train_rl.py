@@ -93,7 +93,7 @@ def seed_with_demonstrations(agent, sim, demo_steps):
 
 def train(total_steps, seed, run_dir, demo_steps=25_000, init_from=None,
           lr=2e-4, eps_start=0.4, eps_end=0.05, eval_every=20_000,
-          eval_episodes=12, demo_frac=0.25, sup_weight=1.0):
+          eval_episodes=12, demo_frac=0.25, sup_weight=1.0, deploy=True):
     os.makedirs(run_dir, exist_ok=True)
     os.makedirs(os.path.dirname(config.POLICY_PATH), exist_ok=True)
 
@@ -122,7 +122,7 @@ def train(total_steps, seed, run_dir, demo_steps=25_000, init_from=None,
     ep_writer.writerow([
         "episode", "step", "result", "reward", "duration", "kills",
         "kills_zombie", "kills_cone", "kills_bucket", "clicks",
-        "suns_collected", "gravebusters", "cherries", "ices", "mowers_used",
+        "suns_collected", "gravebusters", "potato_mines", "ices", "mowers_used",
     ])
 
     acc = NStepAccumulator(agent.buffer)
@@ -163,7 +163,7 @@ def train(total_steps, seed, run_dir, demo_steps=25_000, init_from=None,
                 episode, step, st.result, f"{ep_reward:.2f}", f"{st.duration:.1f}",
                 st.total_kills, st.kills["zombie"], st.kills["conehead"],
                 st.kills["buckethead"], st.clicks, st.suns_collected,
-                st.plants_used["gravebuster"], st.plants_used["cherry"],
+                st.plants_used["gravebuster"], st.plants_used["potato_mine"],
                 st.plants_used["ice"], st.mowers_used,
             ])
             ep_csv.flush()
@@ -186,8 +186,12 @@ def train(total_steps, seed, run_dir, demo_steps=25_000, init_from=None,
     # finalna politika = najbolja ako postoji, inače poslednja
     best_path = os.path.join(run_dir, "policy_best.pt")
     final_src = best_path if os.path.exists(best_path) else os.path.join(run_dir, "policy_last.pt")
-    shutil.copyfile(final_src, config.POLICY_PATH)
-    print(f"\n[TRENING] Gotovo. Politika sačuvana u {config.POLICY_PATH}")
+    if deploy:
+        shutil.copyfile(final_src, config.POLICY_PATH)
+        print(f"\n[TRENING] Gotovo. Politika sačuvana u {config.POLICY_PATH}")
+    else:
+        print(f"\n[TRENING] Gotovo. Najbolja politika: {final_src} "
+              f"(bez kopiranja u {config.POLICY_PATH} - koristi tools/select_policy.py)")
 
     plot_curves(run_dir)
 
@@ -240,6 +244,8 @@ if __name__ == "__main__":
                         help="udeo demonstracija u svakom batch-u")
     parser.add_argument("--sup-weight", type=float, default=1.0,
                         help="težina DQfD margin gubitka")
+    parser.add_argument("--no-deploy", dest="deploy", action="store_false",
+                        help="ne kopiraj najbolju politiku u models/policy.pt")
     args = parser.parse_args()
 
     run_dir = args.run_dir or os.path.join(
@@ -247,4 +253,4 @@ if __name__ == "__main__":
     print(f"[TRENING] Koraka: {args.steps} | demo: {args.demo_steps} | rezultati: {run_dir}")
     train(args.steps, args.seed, run_dir, args.demo_steps, args.init_from,
           args.lr, args.eps_start, args.eps_end, args.eval_every,
-          args.eval_episodes, args.demo_frac, args.sup_weight)
+          args.eval_episodes, args.demo_frac, args.sup_weight, args.deploy)
