@@ -24,6 +24,7 @@ from bot.sim.simulator import EpisodeStats
 from bot.vision.capture import ScreenCapture
 from bot.vision.detector import YoloDetector
 from bot.vision.sun_finder import find_suns
+from bot.vision.coin_finder import find_pickups
 from bot.vision.hud_reader import HudReader
 from bot.vision.mower_watcher import MowerWatcher
 from bot.vision.tracker import TargetTracker
@@ -91,6 +92,8 @@ class RealGameSession:
         game_scale = self.screen.gh / 600.0
         self._sun_area = (config.SUN_AREA_MIN_NATIVE * game_scale ** 2,
                           config.SUN_AREA_MAX_NATIVE * game_scale ** 2)
+        # novčići/dijamanti su manji od sunca
+        self._coin_area = (250 * game_scale ** 2, 1400 * game_scale ** 2)
 
         self._video = None
         if config.DEBUG_RECORD_VIDEO:
@@ -347,6 +350,15 @@ class RealGameSession:
                     bottom_margin_px=int(0.965 * self.screen.gh),
                     area_min=self._sun_area[0], area_max=self._sun_area[1],
                     offset=(self.screen.gx, self.screen.gy))
+                # bonus predmeti: srebrni novčići + dijamanti (kupe se kao
+                # sunca, ali ne ulaze u registar sunca - potvrda preko
+                # brojača SUNCA ih automatski ne priznaje kao sunce)
+                coins_px = find_pickups(
+                    crop,
+                    top_margin_px=int(0.15 * self.screen.gh),
+                    bottom_margin_px=int(0.965 * self.screen.gh),
+                    area_min=self._coin_area[0], area_max=self._coin_area[1],
+                    offset=(self.screen.gx, self.screen.gy))
                 # NAŠA posađena mina ume YOLO-u da liči na grob, a HSV filteru
                 # na sunce (izrasla mina je žućkasta!) - detekcije oko mina se
                 # izbacuju iz OBA kanala, po RASTOJANJU (blob uz ivicu ćelije
@@ -365,6 +377,7 @@ class RealGameSession:
                         return False
 
                     suns_px = [s for s in suns_px if not near_mine(s[0], s[1], 0.65)]
+                    coins_px = [s for s in coins_px if not near_mine(s[0], s[1], 0.65)]
                     grave_dets = [
                         d for d in grave_dets
                         if not near_mine(d.cx, d.cy + 0.2 * (d.y2 - d.y1), 0.8)]
@@ -491,7 +504,22 @@ class RealGameSession:
                     else:
                         kind, r, c = "wait", None, None
 
-                # prioritet sunca: ima sunca na ekranu i bezbedno je -> puna
+                # novčići/dijamanti su NAJNIŽI prioritet: čist human-like
+                # bonus - kupe se SAMO u praznom hodu (politika kaže "čekaj",
+                # nema sunca, bezbedno je); promašen novac ne šteti partiji
+                if (kind == "wait" and coins_px and not suns_px
+                        and now >= self._sun_blind_until):
+                    closest_c = min(
+                        (self.mapper.col_float(t.cx) for t in alive_now),
+                        default=99.0)
+                    if closest_c >= config.SUN_PRIORITY_SAFE_COL:
+                        self.executor.collect_sun(coins_px)
+                        self._sun_blind_until = time.time() + config.SUN_BLIND_AFTER_COLLECT
+                        self.stats.actions["collect_coin"] = \
+                            self.stats.actions.get("collect_coin", 0) + 1
+                        continue
+
+                # prioritet SUNCA: ima sunca na ekranu i bezbedno je -> puna
                 # kasa znači više mina/bustera/leda (sigurnosni sloj ispod
                 # i dalje ima poslednju reč ako se pojavi opasnost)
                 if (config.SUN_PRIORITY and suns_px
@@ -532,12 +560,14 @@ class RealGameSession:
                 self.humanizer.reaction_jitter()
                 if kind == "whack":
                     self.executor.whack_cell(r, c, cell_tracks)
-                    # usput pokupi sunce nadohvat ruke (kao čovek: udri pa
-                    # zgrabi sunce pored) - ali ne dok pokupljena još lete
-                    if (suns_px and time.time() >= self._sun_blind_until
-                            and self.executor.opportunistic_sun(suns_px)):
-                        self._collect_window_until = time.time() + 1.3
-                        self._sun_blind_until = time.time() + config.SUN_BLIND_AFTER_COLLECT
+                    # usput pokupi SUNCE nadohvat ruke (kao čovek: udri pa
+                    # zgrabi sunce pored); novčić samo ako sunca nema u blizini
+                    if time.time() >= self._sun_blind_until:
+                        if suns_px and self.executor.opportunistic_sun(suns_px):
+                            self._collect_window_until = time.time() + 1.3
+                            self._sun_blind_until = time.time() + config.SUN_BLIND_AFTER_COLLECT
+                        elif coins_px and self.executor.opportunistic_sun(coins_px, radius=200):
+                            self._sun_blind_until = time.time() + config.SUN_BLIND_AFTER_COLLECT
                 elif kind == "buster":
                     self.executor.plant("gravebuster", r, c)
                     self._card_block_until["gravebuster"] = time.time() + 1.5
